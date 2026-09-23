@@ -3,12 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Telegram Mini App Messenger</title>
+    <title>Telegram Web Messenger</title>
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <!-- Firebase SDKs для онлайн переписки в реальном времени -->
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <!-- PeerJS for Real-Time Direct Messaging (P2P Data Channel) -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 
     <style>
         :root {
@@ -21,7 +20,6 @@
             --accent-hover: #4f46e5;
             --msg-out: #4f46e5;
             --msg-in: rgba(51, 65, 85, 0.95);
-            --fav-color: #eab308;
         }
 
         * {
@@ -43,7 +41,7 @@
             overflow: hidden;
         }
 
-        /* Шапка приложения */
+        /* Header */
         header {
             padding: 14px 16px;
             background: var(--panel-bg);
@@ -83,7 +81,7 @@
             display: inline-block;
         }
 
-        /* Контейнер страниц */
+        /* Container & Pages */
         .main-container {
             flex: 1;
             position: relative;
@@ -103,7 +101,7 @@
             display: flex;
         }
 
-        /* Карточка чата */
+        /* Chat Cards */
         .chat-card {
             display: flex;
             align-items: center;
@@ -143,12 +141,6 @@
             background: linear-gradient(135deg, #f59e0b, #d97706);
         }
 
-        .avatar-box img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
         .chat-details {
             flex: 1;
             min-width: 0;
@@ -183,7 +175,7 @@
             text-overflow: ellipsis;
         }
 
-        /* Окно сообщений диалога */
+        /* Chat View Window */
         .chat-view {
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
@@ -232,6 +224,15 @@
             border: 1px solid var(--panel-border);
         }
 
+        .msg-img {
+            max-width: 100%;
+            max-height: 250px;
+            border-radius: 12px;
+            margin-top: 6px;
+            display: block;
+            object-fit: cover;
+        }
+
         .msg-time {
             font-size: 10px;
             opacity: 0.7;
@@ -240,15 +241,16 @@
         }
 
         .chat-input-bar {
-            padding: 12px;
+            padding: 10px 12px;
             background: var(--panel-bg);
             backdrop-filter: blur(12px);
             border-top: 1px solid var(--panel-border);
             display: flex;
+            align-items: center;
             gap: 8px;
         }
 
-        .chat-input-bar input {
+        .chat-input-bar input[type="text"] {
             flex: 1;
             padding: 12px 16px;
             border-radius: 24px;
@@ -259,22 +261,64 @@
             font-size: 14px;
         }
 
-        .chat-input-bar button {
+        .attach-btn {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--panel-border);
+            color: #818cf8;
+            border-radius: 50%;
+            width: 42px;
+            height: 42px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: background 0.2s;
+        }
+
+        .attach-btn:active {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .send-btn {
             background: var(--accent-color);
             color: #fff;
             border: none;
             padding: 0 18px;
+            height: 42px;
             border-radius: 24px;
             font-weight: 600;
             cursor: pointer;
             transition: background 0.2s;
+            flex-shrink: 0;
         }
 
-        .chat-input-bar button:active {
+        .send-btn:active {
             background: var(--accent-hover);
         }
 
-        /* Профиль */
+        /* Image Preview Badge */
+        .image-preview-badge {
+            display: none;
+            padding: 8px 12px;
+            background: rgba(15, 23, 42, 0.9);
+            border-top: 1px solid var(--panel-border);
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .image-preview-badge.active {
+            display: flex;
+        }
+
+        .preview-img-thumb {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            object-fit: cover;
+        }
+
+        /* Profile Card */
         .profile-card {
             background: var(--panel-bg);
             border: 1px solid var(--panel-border);
@@ -353,7 +397,7 @@
             background: var(--accent-hover);
         }
 
-        /* Нижняя навигация */
+        /* Bottom Nav (Cleaned - 3 tabs only) */
         .bottom-nav {
             display: flex;
             background: var(--panel-bg);
@@ -364,7 +408,7 @@
 
         .nav-btn {
             flex: 1;
-            padding: 10px 0;
+            padding: 12px 0;
             background: none;
             border: none;
             color: var(--text-muted);
@@ -387,7 +431,7 @@
             fill: currentColor;
         }
 
-        /* Всплывающее уведомление (Toast) */
+        /* Toast Notifications */
         .toast-notification {
             position: fixed;
             bottom: 75px;
@@ -414,21 +458,21 @@
 </head>
 <body>
 
-    <!-- Шапка приложения -->
+    <!-- Header -->
     <header>
         <h1 id="header-title">Чаты</h1>
-        <div class="status-badge">
+        <div class="status-badge" id="status-badge">
             <span class="status-dot"></span>
-            <span>Онлайн</span>
+            <span id="status-text">Онлайн</span>
         </div>
     </header>
 
-    <!-- Основной контент страницы -->
+    <!-- Content pages -->
     <div class="main-container">
         
-        <!-- Вкладка 1: Список чатов -->
+        <!-- Tab 1: Chats (Includes Pinned "Избранное") -->
         <div id="page-chats" class="page active">
-            <!-- Закрепленная карточка "Избранное" -->
+            <!-- Pinned Favorites Chat -->
             <div class="chat-card" onclick="openChat('favorites')">
                 <div class="avatar-box favorites">🔖</div>
                 <div class="chat-details">
@@ -436,43 +480,33 @@
                         <span class="chat-name">Избранное</span>
                         <span class="chat-time" id="fav-last-time"></span>
                     </div>
-                    <div class="chat-preview" id="fav-last-msg">Ваше личное облако для заметок</div>
+                    <div class="chat-preview" id="fav-last-msg">Ваше личное облако заметок</div>
                 </div>
             </div>
 
-            <!-- Список всех активных диалогов -->
+            <!-- List of All Dynamic Conversations -->
             <div id="chats-list">
                 <p style="text-align: center; color: var(--text-muted); margin-top: 30px; font-size: 14px;">Загрузка диалогов...</p>
             </div>
         </div>
 
-        <!-- Вкладка 2: Избранное -->
-        <div id="page-favorites" class="page">
-            <div style="text-align: center; margin-bottom: 16px;">
-                <div class="avatar-box favorites" style="width: 60px; height: 60px; font-size: 28px; margin: 0 auto 10px auto;">🔖</div>
-                <h3 style="font-size: 16px;">Избранное</h3>
-                <p style="color: var(--text-muted); font-size: 13px; margin-top: 4px;">Сохраняйте важные сообщения и заметки здесь</p>
-            </div>
-            <button class="btn-primary" onclick="openChat('favorites')">Открыть чат Избранное</button>
-        </div>
-
-        <!-- Вкладка 3: Найти друга -->
+        <!-- Tab 2: Search Friend -->
         <div id="page-search" class="page">
             <div class="form-group">
                 <input type="text" id="search-input" class="form-control" placeholder="Введи ID или username друга..." oninput="searchUsers()">
             </div>
             <div id="search-results">
-                <p style="text-align: center; color: var(--text-muted); margin-top: 20px; font-size: 13px;">Введи никнейм или ID пользователя, чтобы открыть диалог</p>
+                <p style="text-align: center; color: var(--text-muted); margin-top: 20px; font-size: 13px;">Введи никнейм или ID пользователя, чтобы открылась возможность переписки</p>
             </div>
         </div>
 
-        <!-- Вкладка 4: Мой Профиль -->
+        <!-- Tab 3: Profile -->
         <div id="page-profile" class="page">
             <div class="profile-card">
                 <div class="avatar-box" id="profile-avatar-preview" style="width: 76px; height: 76px; font-size: 36px; margin: 0 auto 12px auto;">😎</div>
                 <h2 id="profile-display-name" style="font-size: 20px;">Загрузка...</h2>
                 
-                <!-- Юзернейм с функцией скопировать -->
+                <!-- Copy Username Button -->
                 <div>
                     <div class="username-copy-row" onclick="copyUsername()">
                         <span id="profile-username" style="color: #818cf8; font-size: 14px; font-weight: 600;">@username</span>
@@ -480,7 +514,7 @@
                     </div>
                 </div>
 
-                <!-- Строго Мой ID без лишних слов -->
+                <!-- Strict User ID Display -->
                 <p id="profile-id-tag" style="color: var(--text-muted); font-size: 13px; margin-top: 12px; font-weight: 500;">Мой ID: ...</p>
             </div>
 
@@ -498,29 +532,41 @@
         </div>
     </div>
 
-    <!-- Окно открытого чата -->
+    <!-- Active Chat Window -->
     <div class="chat-view" id="chat-view">
         <header>
             <button onclick="closeChat()" style="background:none; border:none; color: #818cf8; font-size:15px; font-weight:600; cursor:pointer;">← Назад</button>
             <h1 id="active-chat-name" style="font-size: 16px;">Чат</h1>
             <div style="width: 45px;"></div>
         </header>
+
         <div class="messages-area" id="messages-container"></div>
+
+        <!-- Image Attachment Preview Bar -->
+        <div class="image-preview-badge" id="image-preview-bar">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <img id="preview-img-thumb" class="preview-img-thumb" src="" alt="preview">
+                <span style="font-size: 12px; color: var(--text-muted);">Фото прикреплено</span>
+            </div>
+            <button onclick="clearAttachedImage()" style="background:none; border:none; color:#ef4444; font-size:16px; cursor:pointer; font-weight:bold;">✕</button>
+        </div>
+
         <div class="chat-input-bar">
+            <button class="attach-btn" onclick="document.getElementById('photo-input').click()" title="Прикрепить фото">
+                📷
+            </button>
+            <input type="file" id="photo-input" accept="image/*" style="display: none;" onchange="handlePhotoSelect(event)">
+
             <input type="text" id="message-input" placeholder="Написать сообщение..." onkeydown="if(event.key==='Enter') sendChatMessage()">
-            <button onclick="sendChatMessage()">Отправить</button>
+            <button class="send-btn" onclick="sendChatMessage()">Отправить</button>
         </div>
     </div>
 
-    <!-- Нижнее меню навигации -->
+    <!-- Bottom Nav Bar (3 Tabs Only: Чаты, Найти, Профиль) -->
     <nav class="bottom-nav">
         <button class="nav-btn active" onclick="switchPage('chats', this)">
             <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg>
             Чаты
-        </button>
-        <button class="nav-btn" onclick="switchPage('favorites', this)">
-            <svg viewBox="0 0 24 24"><path d="M17 3H7c-1.1 0-1.99.9-1.99 2L5 21l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg>
-            Избранное
         </button>
         <button class="nav-btn" onclick="switchPage('search', this)">
             <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
@@ -532,31 +578,21 @@
         </button>
     </nav>
 
-    <!-- Уведомление на экране -->
+    <!-- Toast Notification Popup -->
     <div id="toast" class="toast-notification">Уведомление</div>
 
     <script>
-        // Конфигурация Firebase для связи пользователей
-        const firebaseConfig = {
-            apiKey: "AIzaSyAsFakeKeyForClientStorage123456",
-            authDomain: "mini-app-chat.firebaseapp.com",
-            projectId: "mini-app-chat",
-            storageBucket: "mini-app-chat.appspot.com",
-            messagingSenderId: "1234567890",
-            appId: "1:1234567890:web:abcdef123456"
-        };
-
-        // Инициализация Telegram WebApp SDK
+        // Telegram WebApp Setup
         const tg = window.Telegram?.WebApp;
         if (tg) {
             tg.ready();
             tg.expand();
         }
 
-        // Автоматическое определение данных пользователя
+        // Generate or load user data
         function initUserData() {
             const tgUser = tg?.initDataUnsafe?.user;
-            let saved = JSON.parse(localStorage.getItem('my_app_user_v2'));
+            let saved = JSON.parse(localStorage.getItem('app_user_profile_v3'));
 
             if (tgUser && tgUser.id) {
                 return {
@@ -581,17 +617,78 @@
 
         let currentUser = initUserData();
         let activeChatTarget = null;
-        let localMessagesDB = JSON.parse(localStorage.getItem('my_app_messages_v2')) || {};
+        let attachedImageData = null;
+        let activeConnections = {}; // PeerJS connection pool
+        let peer = null;
+
+        let localMessagesDB = JSON.parse(localStorage.getItem('app_messages_db_v3')) || {};
 
         window.onload = function() {
             saveUserData();
             updateProfileUI();
             renderChatsList();
             updateFavoritesPreview();
+            setupPeerNetwork();
         };
 
         function saveUserData() {
-            localStorage.setItem('my_app_user_v2', JSON.stringify(currentUser));
+            localStorage.setItem('app_user_profile_v3', JSON.stringify(currentUser));
+        }
+
+        // Initialize PeerJS for direct Real-Time WebRTC packet transfer
+        function setupPeerNetwork() {
+            // Using ID prefix to avoid PeerJS ID collisions
+            const peerId = 'tgapp_user_' + currentUser.id;
+            peer = new Peer(peerId);
+
+            peer.on('open', function(id) {
+                console.log('Подключено к сети сообщений. Твой P2P ID:', id);
+            });
+
+            // Listen for incoming message packets from friends
+            peer.on('connection', function(conn) {
+                conn.on('data', function(packet) {
+                    handleIncomingPacket(packet);
+                });
+            });
+
+            peer.on('error', function(err) {
+                console.log('Сеть:', err.type);
+            });
+        }
+
+        function connectToPeer(targetId) {
+            const remotePeerId = 'tgapp_user_' + targetId;
+            if (activeConnections[remotePeerId]) return activeConnections[remotePeerId];
+
+            const conn = peer.connect(remotePeerId);
+            conn.on('open', function() {
+                activeConnections[remotePeerId] = conn;
+            });
+            conn.on('data', function(packet) {
+                handleIncomingPacket(packet);
+            });
+            return conn;
+        }
+
+        function handleIncomingPacket(packet) {
+            if (!packet || !packet.senderId) return;
+
+            const targetKey = packet.senderId;
+            if (!localMessagesDB[targetKey]) {
+                localMessagesDB[targetKey] = [];
+            }
+
+            localMessagesDB[targetKey].push(packet.msgObj);
+            localStorage.setItem('app_messages_db_v3', JSON.stringify(localMessagesDB));
+
+            if (activeChatTarget === targetKey) {
+                renderMessages();
+            } else {
+                showToast('Новое сообщение от ' + targetKey);
+            }
+
+            renderChatsList();
         }
 
         function showToast(text) {
@@ -600,13 +697,11 @@
             toast.classList.add('show');
             setTimeout(() => {
                 toast.classList.remove('show');
-            }, 2000);
+            }, 2200);
         }
 
         function copyUsername() {
             const fullUsername = '@' + currentUser.username;
-            
-            // Надежное копирование текста в буфер
             const tempInput = document.createElement('input');
             tempInput.value = fullUsername;
             document.body.appendChild(tempInput);
@@ -620,8 +715,6 @@
         function updateProfileUI() {
             document.getElementById('profile-display-name').innerText = currentUser.name;
             document.getElementById('profile-username').innerText = '@' + currentUser.username;
-            
-            // Формат требования: Только "Мой ID:"
             document.getElementById('profile-id-tag').innerText = 'Мой ID: ' + currentUser.id;
             
             document.getElementById('edit-name').value = currentUser.name;
@@ -629,7 +722,7 @@
 
             const box = document.getElementById('profile-avatar-preview');
             if (currentUser.avatar.startsWith('http')) {
-                box.innerHTML = `<img src="${currentUser.avatar}">`;
+                box.innerHTML = `<img src="${currentUser.avatar}" style="width:100%;height:100%;object-fit:cover;">`;
             } else {
                 box.innerText = currentUser.avatar || '👤';
             }
@@ -640,7 +733,7 @@
             currentUser.avatar = document.getElementById('edit-avatar').value.trim() || '🚀';
             saveUserData();
             updateProfileUI();
-            showToast('Профиль успешно обновлён');
+            showToast('Профиль сохранён');
         }
 
         function switchPage(page, btn) {
@@ -652,7 +745,6 @@
 
             const headers = { 
                 chats: 'Чаты', 
-                favorites: 'Избранное', 
                 search: 'Поиск контактов', 
                 profile: 'Мой профиль' 
             };
@@ -663,7 +755,7 @@
             const favs = localMessagesDB['favorites'] || [];
             if (favs.length > 0) {
                 const last = favs[favs.length - 1];
-                document.getElementById('fav-last-msg').innerText = last.text;
+                document.getElementById('fav-last-msg').innerText = last.image ? '📷 Фотография' : last.text;
                 document.getElementById('fav-last-time').innerText = last.time;
             }
         }
@@ -676,7 +768,7 @@
                 list.innerHTML = `
                     <div style="text-align: center; color: var(--text-muted); margin-top: 30px; font-size: 13px;">
                         <p>Нет активных диалогов</p>
-                        <p style="margin-top: 6px;">Зайдите во вкладку <b>«Найти»</b>, чтобы написать другу.</p>
+                        <p style="margin-top: 6px;">Откройте вкладку <b>«Найти»</b>, чтобы написать другу.</p>
                     </div>`;
                 return;
             }
@@ -690,6 +782,8 @@
                 card.className = 'chat-card';
                 card.onclick = () => openChat(target);
 
+                const displayPreview = last ? (last.image ? '📷 [Фотография] ' + (last.text || '') : last.text) : 'Нет сообщений';
+
                 card.innerHTML = `
                     <div class="avatar-box">💬</div>
                     <div class="chat-details">
@@ -697,7 +791,7 @@
                             <span class="chat-name">${target}</span>
                             <span class="chat-time">${last ? last.time : ''}</span>
                         </div>
-                        <div class="chat-preview">${last ? last.text : 'Нет сообщений'}</div>
+                        <div class="chat-preview">${escapeHtml(displayPreview)}</div>
                     </div>
                 `;
                 list.appendChild(card);
@@ -709,7 +803,7 @@
             const res = document.getElementById('search-results');
 
             if (!val) {
-                res.innerHTML = '<p style="text-align: center; color: var(--text-muted); margin-top: 20px; font-size: 13px;">Введи никнейм или ID пользователя, чтобы открыть диалог</p>';
+                res.innerHTML = '<p style="text-align: center; color: var(--text-muted); margin-top: 20px; font-size: 13px;">Введи никнейм или ID пользователя, чтобы открылась возможность переписки</p>';
                 return;
             }
 
@@ -717,7 +811,7 @@
                 <div class="chat-card" onclick="openChat('${val}')">
                     <div class="avatar-box">👤</div>
                     <div class="chat-details">
-                        <div class="chat-name">Чат с "${val}"</div>
+                        <div class="chat-name">Диалог с "${val}"</div>
                         <div class="chat-preview">Нажми, чтобы начать переписку</div>
                     </div>
                 </div>
@@ -729,14 +823,66 @@
             const title = target === 'favorites' ? '🔖 Избранное' : target;
             document.getElementById('active-chat-name').innerText = title;
             document.getElementById('chat-view').classList.add('active');
+            
+            // Connect to user peer if not favorite
+            if (target !== 'favorites') {
+                connectToPeer(target);
+            }
+            
             renderMessages();
         }
 
         function closeChat() {
             document.getElementById('chat-view').classList.remove('active');
             activeChatTarget = null;
+            clearAttachedImage();
             renderChatsList();
             updateFavoritesPreview();
+        }
+
+        /* Image Attachment Handling */
+        function handlePhotoSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // Compress / convert image to base64
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+                    const maxDim = 800; // Resize max dimension to keep packets small
+
+                    if (width > maxDim || height > maxDim) {
+                        if (width > height) {
+                            height = Math.round((height * maxDim) / width);
+                            width = maxDim;
+                        } else {
+                            width = Math.round((width * maxDim) / height);
+                            height = maxDim;
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    attachedImageData = canvas.toDataURL('image/jpeg', 0.7);
+                    document.getElementById('preview-img-thumb').src = attachedImageData;
+                    document.getElementById('image-preview-bar').classList.add('active');
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function clearAttachedImage() {
+            attachedImageData = null;
+            document.getElementById('photo-input').value = '';
+            document.getElementById('image-preview-bar').classList.remove('active');
         }
 
         function renderMessages() {
@@ -748,8 +894,12 @@
                 const el = document.createElement('div');
                 el.className = 'msg-bubble ' + (m.sender === currentUser.id ? 'out' : 'in');
                 
+                let imgHTML = m.image ? `<img src="${m.image}" class="msg-img" onclick="window.open('${m.image}')">` : '';
+                let textHTML = m.text ? `<div>${escapeHtml(m.text)}</div>` : '';
+
                 el.innerHTML = `
-                    <div>${escapeHtml(m.text)}</div>
+                    ${imgHTML}
+                    ${textHTML}
                     <div class="msg-time">${m.time}</div>
                 `;
                 box.appendChild(el);
@@ -761,7 +911,8 @@
         function sendChatMessage() {
             const input = document.getElementById('message-input');
             const txt = input.value.trim();
-            if (!txt || !activeChatTarget) return;
+
+            if ((!txt && !attachedImageData) || !activeChatTarget) return;
 
             if (!localMessagesDB[activeChatTarget]) {
                 localMessagesDB[activeChatTarget] = [];
@@ -770,19 +921,47 @@
             const now = new Date();
             const time = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
 
-            localMessagesDB[activeChatTarget].push({
+            const msgObj = {
                 sender: currentUser.id,
                 text: txt,
+                image: attachedImageData,
                 time: time
-            });
+            };
 
-            localStorage.setItem('my_app_messages_v2', JSON.stringify(localMessagesDB));
+            // Save locally
+            localMessagesDB[activeChatTarget].push(msgObj);
+            localStorage.setItem('app_messages_db_v3', JSON.stringify(localMessagesDB));
+
+            // Direct P2P packet transmission if not in favorites
+            if (activeChatTarget !== 'favorites') {
+                const packet = {
+                    senderId: currentUser.id,
+                    msgObj: msgObj
+                };
+
+                const remotePeerId = 'tgapp_user_' + activeChatTarget;
+                const conn = activeConnections[remotePeerId] || connectToPeer(activeChatTarget);
+
+                if (conn && conn.open) {
+                    conn.send(packet);
+                } else {
+                    // Re-attempt sending on open connection
+                    const newConn = peer.connect(remotePeerId);
+                    newConn.on('open', function() {
+                        activeConnections[remotePeerId] = newConn;
+                        newConn.send(packet);
+                    });
+                }
+            }
+
             input.value = '';
+            clearAttachedImage();
             renderMessages();
             updateFavoritesPreview();
         }
 
         function escapeHtml(text) {
+            if (!text) return '';
             return text.replace(/&/g, "&amp;")
                        .replace(/</g, "&lt;")
                        .replace(/>/g, "&gt;")
