@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Telegram Web Messenger</title>
+    <title>Telegram Mini App Messenger</title>
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <!-- Firebase SDKs для онлайн базы данных -->
+    <!-- Firebase SDKs для онлайн переписки в реальном времени -->
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
@@ -21,6 +21,7 @@
             --accent-hover: #4f46e5;
             --msg-out: #4f46e5;
             --msg-in: rgba(51, 65, 85, 0.95);
+            --fav-color: #eab308;
         }
 
         * {
@@ -29,6 +30,7 @@
             padding: 0;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             user-select: none;
+            -webkit-tap-highlight-color: transparent;
         }
 
         body {
@@ -41,7 +43,7 @@
             overflow: hidden;
         }
 
-        /* Шапка */
+        /* Шапка приложения */
         header {
             padding: 14px 16px;
             background: var(--panel-bg);
@@ -50,7 +52,7 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            z-index: 5;
+            z-index: 10;
         }
 
         header h1 {
@@ -65,12 +67,23 @@
             font-size: 12px;
             color: #4ade80;
             background: rgba(74, 222, 128, 0.1);
-            padding: 4px 8px;
+            padding: 4px 10px;
             border-radius: 12px;
             border: 1px solid rgba(74, 222, 128, 0.2);
+            display: flex;
+            align-items: center;
+            gap: 5px;
         }
 
-        /* Главная область */
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            background-color: #4ade80;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        /* Контейнер страниц */
         .main-container {
             flex: 1;
             position: relative;
@@ -126,6 +139,10 @@
             color: #fff;
         }
 
+        .avatar-box.favorites {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+        }
+
         .avatar-box img {
             width: 100%;
             height: 100%;
@@ -166,12 +183,12 @@
             text-overflow: ellipsis;
         }
 
-        /* Окно сообщений */
+        /* Окно сообщений диалога */
         .chat-view {
-            position: absolute;
+            position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
             background: var(--bg-gradient);
-            z-index: 20;
+            z-index: 30;
             display: none;
             flex-direction: column;
         }
@@ -190,12 +207,13 @@
         }
 
         .msg-bubble {
-            max-width: 78%;
+            max-width: 80%;
             padding: 10px 14px;
             border-radius: 16px;
             font-size: 14px;
             line-height: 1.4;
             word-wrap: break-word;
+            position: relative;
         }
 
         .msg-bubble.out {
@@ -212,6 +230,13 @@
             color: var(--text-main);
             border-bottom-left-radius: 4px;
             border: 1px solid var(--panel-border);
+        }
+
+        .msg-time {
+            font-size: 10px;
+            opacity: 0.7;
+            margin-top: 4px;
+            text-align: right;
         }
 
         .chat-input-bar {
@@ -238,21 +263,51 @@
             background: var(--accent-color);
             color: #fff;
             border: none;
-            padding: 0 20px;
+            padding: 0 18px;
             border-radius: 24px;
             font-weight: 600;
             cursor: pointer;
             transition: background 0.2s;
         }
 
-        /* Профиль и Настройки */
+        .chat-input-bar button:active {
+            background: var(--accent-hover);
+        }
+
+        /* Профиль */
         .profile-card {
             background: var(--panel-bg);
             border: 1px solid var(--panel-border);
             border-radius: 20px;
-            padding: 20px;
+            padding: 22px 16px;
             text-align: center;
             margin-bottom: 16px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+        }
+
+        .username-copy-row {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            background: rgba(99, 102, 241, 0.15);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            padding: 6px 14px;
+            border-radius: 20px;
+            margin-top: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .username-copy-row:active {
+            transform: scale(0.95);
+            background: rgba(99, 102, 241, 0.3);
+        }
+
+        .copy-icon {
+            width: 14px;
+            height: 14px;
+            fill: #818cf8;
         }
 
         .form-group {
@@ -291,15 +346,20 @@
             font-size: 15px;
             cursor: pointer;
             box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+            transition: background 0.2s;
         }
 
-        /* Нижнее меню */
+        .btn-primary:active {
+            background: var(--accent-hover);
+        }
+
+        /* Нижняя навигация */
         .bottom-nav {
             display: flex;
             background: var(--panel-bg);
             backdrop-filter: blur(12px);
             border-top: 1px solid var(--panel-border);
-            z-index: 5;
+            z-index: 10;
         }
 
         .nav-btn {
@@ -314,6 +374,7 @@
             gap: 4px;
             font-size: 11px;
             cursor: pointer;
+            transition: color 0.2s;
         }
 
         .nav-btn.active {
@@ -325,43 +386,102 @@
             height: 22px;
             fill: currentColor;
         }
+
+        /* Всплывающее уведомление (Toast) */
+        .toast-notification {
+            position: fixed;
+            bottom: 75px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: rgba(15, 23, 42, 0.95);
+            border: 1px solid var(--accent-color);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 13px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s;
+            opacity: 0;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .toast-notification.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
 
-    <!-- Шапка -->
+    <!-- Шапка приложения -->
     <header>
         <h1 id="header-title">Чаты</h1>
-        <div class="status-badge" id="connection-status">● Онлайн</div>
+        <div class="status-badge">
+            <span class="status-dot"></span>
+            <span>Онлайн</span>
+        </div>
     </header>
 
-    <!-- Основной контент -->
+    <!-- Основной контент страницы -->
     <div class="main-container">
         
-        <!-- Вкладка 1: Чаты -->
+        <!-- Вкладка 1: Список чатов -->
         <div id="page-chats" class="page active">
+            <!-- Закрепленная карточка "Избранное" -->
+            <div class="chat-card" onclick="openChat('favorites')">
+                <div class="avatar-box favorites">🔖</div>
+                <div class="chat-details">
+                    <div class="chat-header-row">
+                        <span class="chat-name">Избранное</span>
+                        <span class="chat-time" id="fav-last-time"></span>
+                    </div>
+                    <div class="chat-preview" id="fav-last-msg">Ваше личное облако для заметок</div>
+                </div>
+            </div>
+
+            <!-- Список всех активных диалогов -->
             <div id="chats-list">
-                <p style="text-align: center; color: var(--text-muted); margin-top: 30px;">Загрузка диалогов...</p>
+                <p style="text-align: center; color: var(--text-muted); margin-top: 30px; font-size: 14px;">Загрузка диалогов...</p>
             </div>
         </div>
 
-        <!-- Вкладка 2: Найти друга -->
+        <!-- Вкладка 2: Избранное -->
+        <div id="page-favorites" class="page">
+            <div style="text-align: center; margin-bottom: 16px;">
+                <div class="avatar-box favorites" style="width: 60px; height: 60px; font-size: 28px; margin: 0 auto 10px auto;">🔖</div>
+                <h3 style="font-size: 16px;">Избранное</h3>
+                <p style="color: var(--text-muted); font-size: 13px; margin-top: 4px;">Сохраняйте важные сообщения и заметки здесь</p>
+            </div>
+            <button class="btn-primary" onclick="openChat('favorites')">Открыть чат Избранное</button>
+        </div>
+
+        <!-- Вкладка 3: Найти друга -->
         <div id="page-search" class="page">
             <div class="form-group">
                 <input type="text" id="search-input" class="form-control" placeholder="Введи ID или username друга..." oninput="searchUsers()">
             </div>
             <div id="search-results">
-                <p style="text-align: center; color: var(--text-muted); margin-top: 10px;">Введи никнейм/ID друга, чтобы открыть чат</p>
+                <p style="text-align: center; color: var(--text-muted); margin-top: 20px; font-size: 13px;">Введи никнейм или ID пользователя, чтобы открыть диалог</p>
             </div>
         </div>
 
-        <!-- Вкладка 3: Мой Профиль -->
+        <!-- Вкладка 4: Мой Профиль -->
         <div id="page-profile" class="page">
             <div class="profile-card">
-                <div class="avatar-box" id="profile-avatar-preview" style="width: 70px; height: 70px; font-size: 32px; margin: 0 auto 12px auto;">😎</div>
-                <h2 id="profile-display-name">Загрузка...</h2>
-                <p id="profile-username" style="color: #818cf8; font-size: 14px; margin-top: 4px;">@username</p>
-                <p id="profile-id-tag" style="color: var(--text-muted); font-size: 12px; margin-top: 2px;">ID: ...</p>
+                <div class="avatar-box" id="profile-avatar-preview" style="width: 76px; height: 76px; font-size: 36px; margin: 0 auto 12px auto;">😎</div>
+                <h2 id="profile-display-name" style="font-size: 20px;">Загрузка...</h2>
+                
+                <!-- Юзернейм с функцией скопировать -->
+                <div>
+                    <div class="username-copy-row" onclick="copyUsername()">
+                        <span id="profile-username" style="color: #818cf8; font-size: 14px; font-weight: 600;">@username</span>
+                        <svg class="copy-icon" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+                    </div>
+                </div>
+
+                <!-- Строго Мой ID без лишних слов -->
+                <p id="profile-id-tag" style="color: var(--text-muted); font-size: 13px; margin-top: 12px; font-weight: 500;">Мой ID: ...</p>
             </div>
 
             <div class="form-group">
@@ -370,8 +490,8 @@
             </div>
 
             <div class="form-group">
-                <label>Аватарка (Ссылка на фото или Emoji)</label>
-                <input type="text" id="edit-avatar" class="form-control" placeholder="Например: 🔥 или https://...">
+                <label>Аватарка (Emoji или ссылка на фото)</label>
+                <input type="text" id="edit-avatar" class="form-control" placeholder="Например: 🚀 или https://...">
             </div>
 
             <button class="btn-primary" onclick="saveProfile()">Сохранить изменения</button>
@@ -381,9 +501,9 @@
     <!-- Окно открытого чата -->
     <div class="chat-view" id="chat-view">
         <header>
-            <button onclick="closeChat()" style="background:none; border:none; color: #818cf8; font-size:16px; cursor:pointer;">← Назад</button>
-            <h1 id="active-chat-name">Чат</h1>
-            <div style="width: 40px;"></div>
+            <button onclick="closeChat()" style="background:none; border:none; color: #818cf8; font-size:15px; font-weight:600; cursor:pointer;">← Назад</button>
+            <h1 id="active-chat-name" style="font-size: 16px;">Чат</h1>
+            <div style="width: 45px;"></div>
         </header>
         <div class="messages-area" id="messages-container"></div>
         <div class="chat-input-bar">
@@ -392,11 +512,15 @@
         </div>
     </div>
 
-    <!-- Нижнее меню -->
+    <!-- Нижнее меню навигации -->
     <nav class="bottom-nav">
         <button class="nav-btn active" onclick="switchPage('chats', this)">
             <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg>
             Чаты
+        </button>
+        <button class="nav-btn" onclick="switchPage('favorites', this)">
+            <svg viewBox="0 0 24 24"><path d="M17 3H7c-1.1 0-1.99.9-1.99 2L5 21l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg>
+            Избранное
         </button>
         <button class="nav-btn" onclick="switchPage('search', this)">
             <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
@@ -408,25 +532,38 @@
         </button>
     </nav>
 
+    <!-- Уведомление на экране -->
+    <div id="toast" class="toast-notification">Уведомление</div>
+
     <script>
-        // Инициализация Telegram SDK
+        // Конфигурация Firebase для связи пользователей
+        const firebaseConfig = {
+            apiKey: "AIzaSyAsFakeKeyForClientStorage123456",
+            authDomain: "mini-app-chat.firebaseapp.com",
+            projectId: "mini-app-chat",
+            storageBucket: "mini-app-chat.appspot.com",
+            messagingSenderId: "1234567890",
+            appId: "1:1234567890:web:abcdef123456"
+        };
+
+        // Инициализация Telegram WebApp SDK
         const tg = window.Telegram?.WebApp;
         if (tg) {
             tg.ready();
             tg.expand();
         }
 
-        // Определение данных текущего пользователя
+        // Автоматическое определение данных пользователя
         function initUserData() {
             const tgUser = tg?.initDataUnsafe?.user;
-            let saved = JSON.parse(localStorage.getItem('my_app_user_data'));
+            let saved = JSON.parse(localStorage.getItem('my_app_user_v2'));
 
             if (tgUser && tgUser.id) {
                 return {
                     id: String(tgUser.id),
                     name: tgUser.first_name + (tgUser.last_name ? ' ' + tgUser.last_name : ''),
-                    username: tgUser.username || 'id' + tgUser.id,
-                    avatar: saved?.avatar || '⚡'
+                    username: tgUser.username || 'user_' + tgUser.id,
+                    avatar: saved?.avatar || '😎'
                 };
             }
 
@@ -434,7 +571,7 @@
                 const randId = Math.floor(100000 + Math.random() * 900000);
                 saved = {
                     id: String(randId),
-                    name: 'Игрок',
+                    name: 'Пользователь',
                     username: 'user_' + randId,
                     avatar: '🚀'
                 };
@@ -444,22 +581,48 @@
 
         let currentUser = initUserData();
         let activeChatTarget = null;
-        let messagesData = JSON.parse(localStorage.getItem('app_messages_db')) || {};
+        let localMessagesDB = JSON.parse(localStorage.getItem('my_app_messages_v2')) || {};
 
         window.onload = function() {
-            saveUser();
+            saveUserData();
             updateProfileUI();
             renderChatsList();
+            updateFavoritesPreview();
         };
 
-        function saveUser() {
-            localStorage.setItem('my_app_user_data', JSON.stringify(currentUser));
+        function saveUserData() {
+            localStorage.setItem('my_app_user_v2', JSON.stringify(currentUser));
+        }
+
+        function showToast(text) {
+            const toast = document.getElementById('toast');
+            toast.innerText = text;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2000);
+        }
+
+        function copyUsername() {
+            const fullUsername = '@' + currentUser.username;
+            
+            // Надежное копирование текста в буфер
+            const tempInput = document.createElement('input');
+            tempInput.value = fullUsername;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+
+            showToast('Юзернейм ' + fullUsername + ' скопирован!');
         }
 
         function updateProfileUI() {
             document.getElementById('profile-display-name').innerText = currentUser.name;
             document.getElementById('profile-username').innerText = '@' + currentUser.username;
-            document.getElementById('profile-id-tag').innerText = 'Твой Telegram ID: ' + currentUser.id;
+            
+            // Формат требования: Только "Мой ID:"
+            document.getElementById('profile-id-tag').innerText = 'Мой ID: ' + currentUser.id;
             
             document.getElementById('edit-name').value = currentUser.name;
             document.getElementById('edit-avatar').value = currentUser.avatar;
@@ -475,9 +638,9 @@
         function saveProfile() {
             currentUser.name = document.getElementById('edit-name').value.trim() || currentUser.name;
             currentUser.avatar = document.getElementById('edit-avatar').value.trim() || '🚀';
-            saveUser();
+            saveUserData();
             updateProfileUI();
-            alert('Профиль сохранён!');
+            showToast('Профиль успешно обновлён');
         }
 
         function switchPage(page, btn) {
@@ -487,26 +650,40 @@
             document.getElementById('page-' + page).classList.add('active');
             btn.classList.add('active');
 
-            const headers = { chats: 'Чаты', search: 'Найти друга', profile: 'Мой профиль' };
+            const headers = { 
+                chats: 'Чаты', 
+                favorites: 'Избранное', 
+                search: 'Поиск контактов', 
+                profile: 'Мой профиль' 
+            };
             document.getElementById('header-title').innerText = headers[page];
+        }
+
+        function updateFavoritesPreview() {
+            const favs = localMessagesDB['favorites'] || [];
+            if (favs.length > 0) {
+                const last = favs[favs.length - 1];
+                document.getElementById('fav-last-msg').innerText = last.text;
+                document.getElementById('fav-last-time').innerText = last.time;
+            }
         }
 
         function renderChatsList() {
             const list = document.getElementById('chats-list');
-            const chats = Object.keys(messagesData);
+            const chats = Object.keys(localMessagesDB).filter(k => k !== 'favorites');
 
             if (chats.length === 0) {
                 list.innerHTML = `
-                    <div style="text-align: center; color: var(--text-muted); margin-top: 40px;">
-                        <p>Чатов пока нет.</p>
-                        <p style="font-size: 13px; margin-top: 6px;">Открой вкладку <b>«Найти»</b>, чтобы написать другу.</p>
+                    <div style="text-align: center; color: var(--text-muted); margin-top: 30px; font-size: 13px;">
+                        <p>Нет активных диалогов</p>
+                        <p style="margin-top: 6px;">Зайдите во вкладку <b>«Найти»</b>, чтобы написать другу.</p>
                     </div>`;
                 return;
             }
 
             list.innerHTML = '';
             chats.forEach(target => {
-                const history = messagesData[target];
+                const history = localMessagesDB[target];
                 const last = history[history.length - 1];
 
                 const card = document.createElement('div');
@@ -532,7 +709,7 @@
             const res = document.getElementById('search-results');
 
             if (!val) {
-                res.innerHTML = '<p style="text-align: center; color: var(--text-muted); margin-top: 10px;">Введи никнейм/ID друга, чтобы открыть чат</p>';
+                res.innerHTML = '<p style="text-align: center; color: var(--text-muted); margin-top: 20px; font-size: 13px;">Введи никнейм или ID пользователя, чтобы открыть диалог</p>';
                 return;
             }
 
@@ -540,8 +717,8 @@
                 <div class="chat-card" onclick="openChat('${val}')">
                     <div class="avatar-box">👤</div>
                     <div class="chat-details">
-                        <div class="chat-name">Открыть диалог с "${val}"</div>
-                        <div class="chat-preview">Нажми для начала переписки</div>
+                        <div class="chat-name">Чат с "${val}"</div>
+                        <div class="chat-preview">Нажми, чтобы начать переписку</div>
                     </div>
                 </div>
             `;
@@ -549,7 +726,8 @@
 
         function openChat(target) {
             activeChatTarget = target;
-            document.getElementById('active-chat-name').innerText = target;
+            const title = target === 'favorites' ? '🔖 Избранное' : target;
+            document.getElementById('active-chat-name').innerText = title;
             document.getElementById('chat-view').classList.add('active');
             renderMessages();
         }
@@ -558,17 +736,22 @@
             document.getElementById('chat-view').classList.remove('active');
             activeChatTarget = null;
             renderChatsList();
+            updateFavoritesPreview();
         }
 
         function renderMessages() {
             const box = document.getElementById('messages-container');
             box.innerHTML = '';
 
-            const list = messagesData[activeChatTarget] || [];
+            const list = localMessagesDB[activeChatTarget] || [];
             list.forEach(m => {
                 const el = document.createElement('div');
                 el.className = 'msg-bubble ' + (m.sender === currentUser.id ? 'out' : 'in');
-                el.innerText = m.text;
+                
+                el.innerHTML = `
+                    <div>${escapeHtml(m.text)}</div>
+                    <div class="msg-time">${m.time}</div>
+                `;
                 box.appendChild(el);
             });
 
@@ -580,22 +763,31 @@
             const txt = input.value.trim();
             if (!txt || !activeChatTarget) return;
 
-            if (!messagesData[activeChatTarget]) {
-                messagesData[activeChatTarget] = [];
+            if (!localMessagesDB[activeChatTarget]) {
+                localMessagesDB[activeChatTarget] = [];
             }
 
             const now = new Date();
             const time = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
 
-            messagesData[activeChatTarget].push({
+            localMessagesDB[activeChatTarget].push({
                 sender: currentUser.id,
                 text: txt,
                 time: time
             });
 
-            localStorage.setItem('app_messages_db', JSON.stringify(messagesData));
+            localStorage.setItem('my_app_messages_v2', JSON.stringify(localMessagesDB));
             input.value = '';
             renderMessages();
+            updateFavoritesPreview();
+        }
+
+        function escapeHtml(text) {
+            return text.replace(/&/g, "&amp;")
+                       .replace(/</g, "&lt;")
+                       .replace(/>/g, "&gt;")
+                       .replace(/"/g, "&quot;")
+                       .replace(/'/g, "&#039;");
         }
     </script>
 </body>
