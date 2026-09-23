@@ -1293,4 +1293,618 @@
 
                 // Send back delivery ACK
                 if (conn && conn.open) {
-                    conn.send({ type: 'ack', msgId: packet.msg.id... (осталось: 29 кб)
+                    conn.send({ type: 'ack', msgId: packet.msg.id });
+                }
+            }
+
+            // 3. Message Delivery Acknowledgement
+            if (packet.type === 'ack' && packet.msgId) {
+                for (let chat in localMessagesDB) {
+                    localMessagesDB[chat].forEach(m => {
+                        if (m.id === packet.msgId) m.delivered = true;
+                    });
+                }
+                localStorage.setItem('pwm_messages_db_v4', JSON.stringify(localMessagesDB));
+                if (activeChatTarget) renderMessages();
+            }
+        }
+
+        function updateGlobalStatus(status, text) {
+            const dot = document.getElementById('global-status-dot');
+            const lbl = document.getElementById('global-status-text');
+            dot.className = 'status-dot ' + status;
+            lbl.innerText = text;
+        }
+
+        function updateActiveChatStatusUI() {
+            if (!activeChatTarget || activeChatTarget === 'favorites') {
+                document.getElementById('active-chat-status-dot').className = 'status-dot';
+                document.getElementById('active-chat-status-label').innerText = 'Личные заметки';
+                return;
+            }
+
+            const conn = activeConnections[activeChatTarget];
+            const dot = document.getElementById('active-chat-status-dot');
+            const lbl = document.getElementById('active-chat-status-label');
+
+            if (conn && conn.open) {
+                dot.className = 'status-dot';
+                lbl.innerText = 'В сети (P2P)';
+            } else {
+                dot.className = 'status-dot connecting';
+                lbl.innerText = 'Подключение...';
+            }
+        }
+
+        /* ========================================================
+           3. CLIPBOARD (CTRL+V) & DRAG-AND-DROP PHOTO HANDLING
+           ======================================================== */
+        document.addEventListener('paste', function(e) {
+            // Check if active chat view is visible
+            if (!document.getElementById('chat-view').classList.contains('active')) return;
+
+            const items = (e.clipboardData || e.originalEvent.clipboardData)?.items;
+            if (!items) return;
+
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf('image') !== -1) {
+                    const blob = items[i].getAsFile();
+                    processAndAttachImage(blob);
+                    e.preventDefault();
+                    showToast('📸 Фото из буфера прикреплено!');
+                    break;
+                }
+            }
+        });
+
+        // Drag & drop image to chat window
+        window.addEventListener('dragover', (e) => e.preventDefault());
+        window.addEventListener('drop', function(e) {
+            if (!document.getElementById('chat-view').classList.contains('active')) return;
+            e.preventDefault();
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                const file = e.dataTransfer.files[0];
+                if (file.type.startsWith('image/')) {
+                    processAndAttachImage(file);
+                    showToast('📸 Фото прикреплено!');
+                }
+            }
+        });
+
+        function handlePhotoSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            processAndAttachImage(file);
+        }
+
+        function processAndAttachImage(fileOrBlob) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+                    const maxDimension = 900; // Resize to ensure fast WebRTC packet delivery
+
+                    if (width > maxDimension || height > maxDimension) {
+                        if (width > height) {
+                            height = Math.round((height * maxDimension) / width);
+                            width = maxDimension;
+                        } else {
+                            width = Math.round((width * maxDimension) / height);
+                            height = maxDimension;
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    attachedImageData = canvas.toDataURL('image/jpeg', 0.72);
+                    document.getElementById('preview-img-thumb').src = attachedImageData;
+                    document.getElementById('image-preview-bar').classList.add('active');
+                    document.getElementById('message-input').focus();
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(fileOrBlob);
+        }
+
+        function clearAttachedImage() {
+            attachedImageData = null;
+            document.getElementById('photo-input').value = '';
+            document.getElementById('image-preview-bar').classList.remove('active');
+        }
+
+        /* ========================================================
+           4. AVATAR UPLOAD & PROFILE MANAGEMENT
+           ======================================================== */
+        function handleAvatarFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 180;
+                    canvas.height = 180;
+                    const ctx = canvas.getContext('2d');
+                    
+                    // Center crop square
+                    const size = Math.min(img.width, img.height);
+                    const sx = (img.width - size) / 2;
+                    const sy = (img.height - size) / 2;
+                    ctx.drawImage(img, sx, sy, size, size, 0, 0, 180, 180);
+
+                    const base64 = canvas.toDataURL('image/jpeg', 0.85);
+                    currentUser.avatar = base64;
+                    document.getElementById('edit-avatar-text').value = '';
+                    saveUserData();
+                    updateProfileUI();
+                    showToast('✅ Новая аватарка установлена!');
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function updateProfileUI() {
+            document.getElementById('profile-display-name').innerText = currentUser.name;
+            document.getElementById('profile-username').innerText = '@' + currentUser.username;
+            document.getElementById('profile-id-tag').innerText = 'ID: ' + currentUser.id;
+            document.getElementById('profile-bio-preview').innerText = currentUser.bio || 'Нет описания';
+
+            document.getElementById('edit-name').value = currentUser.name;
+            document.getElementById('edit-username').value = currentUser.username;
+            document.getElementById('edit-bio').value = currentUser.bio || '';
+            document.getElementById('edit-avatar-text').value = currentUser.avatar.startsWith('data:image') ? '' : currentUser.avatar;
+
+            renderAvatarBox(document.getElementById('profile-avatar-preview'), currentUser.avatar);
+        }
+
+        function saveProfileChanges() {
+            const newName = document.getElementById('edit-name').value.trim();
+            const newUsername = document.getElementById('edit-username').value.trim().replace(/^@/, '').replace(/\s+/g, '_');
+            const newBio = document.getElementById('edit-bio').value.trim();
+            const avatarText = document.getElementById('edit-avatar-text').value.trim();
+
+            if (!newName) {
+                showToast('❌ Имя не может быть пустым');
+                return;
+            }
+
+            currentUser.name = newName;
+            if (newUsername) currentUser.username = newUsername;
+            currentUser.bio = newBio || 'Пользуюсь Pulse Web Messenger ⚡';
+            if (avatarText) currentUser.avatar = avatarText;
+
+            saveUserData();
+            updateProfileUI();
+            showToast('✅ Профиль успешно сохранён!');
+
+            // Broadcast profile changes to currently connected peers
+            for (let pid in activeConnections) {
+                const conn = activeConnections[pid];
+                if (conn && conn.open) {
+                    conn.send({ type: 'profile_sync', user: currentUser });
+                }
+            }
+        }
+
+        function saveUserData() {
+            localStorage.setItem('pwm_user_profile_v4', JSON.stringify(currentUser));
+        }
+
+        function renderAvatarBox(element, avatarData) {
+            if (!element) return;
+            if (avatarData && (avatarData.startsWith('data:image') || avatarData.startsWith('http'))) {
+                element.innerHTML = `<img src="${avatarData}" alt="avatar">`;
+            } else {
+                element.innerText = avatarData || '😎';
+            }
+        }
+
+        /* ========================================================
+           5. CHATS, MESSAGES & COMPOSER
+           ======================================================== */
+        function openChat(target) {
+            activeChatTarget = target;
+            document.getElementById('chat-view').classList.add('active');
+            updateActiveChatHeaderInfo();
+
+            if (target !== 'favorites') {
+                ensureConnectionTo(target);
+                updateActiveChatStatusUI();
+            } else {
+                updateActiveChatStatusUI();
+            }
+
+            renderMessages();
+            setTimeout(() => {
+                document.getElementById('message-input').focus();
+            }, 100);
+        }
+
+        function updateActiveChatHeaderInfo() {
+            const nameEl = document.getElementById('active-chat-name');
+            const avatarBox = document.getElementById('active-chat-avatar');
+
+            if (activeChatTarget === 'favorites') {
+                nameEl.innerText = '🔖 Избранное';
+                avatarBox.className = 'avatar-box favorites';
+                avatarBox.innerHTML = '🔖';
+            } else {
+                avatarBox.className = 'avatar-box';
+                const profile = knownProfilesDB[activeChatTarget];
+                nameEl.innerText = profile ? profile.name : activeChatTarget;
+                renderAvatarBox(avatarBox, profile?.avatar || '💬');
+            }
+        }
+
+        function closeChat() {
+            document.getElementById('chat-view').classList.remove('active');
+            activeChatTarget = null;
+            clearAttachedImage();
+            renderChatsList();
+            updateFavoritesPreview();
+        }
+
+        function sendChatMessage() {
+            const input = document.getElementById('message-input');
+            const txt = input.value.trim();
+
+            if ((!txt && !attachedImageData) || !activeChatTarget) return;
+
+            const now = new Date();
+            const time = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+            const msgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+
+            const msgObj = {
+                id: msgId,
+                sender: currentUser.id,
+                text: txt,
+                image: attachedImageData,
+                time: time,
+                delivered: false
+            };
+
+            if (!localMessagesDB[activeChatTarget]) {
+                localMessagesDB[activeChatTarget] = [];
+            }
+            localMessagesDB[activeChatTarget].push(msgObj);
+            localStorage.setItem('pwm_messages_db_v4', JSON.stringify(localMessagesDB));
+
+            playSfx('send');
+
+            // Send packet over WebRTC
+            if (activeChatTarget !== 'favorites') {
+                const packet = {
+                    type: 'chat_message',
+                    senderId: currentUser.id,
+                    user: currentUser,
+                    msg: msgObj
+                };
+
+                const conn = ensureConnectionTo(activeChatTarget);
+                if (conn && conn.open) {
+                    conn.send(packet);
+                } else {
+                    if (!outgoingPacketQueue[activeChatTarget]) outgoingPacketQueue[activeChatTarget] = [];
+                    outgoingPacketQueue[activeChatTarget].push(packet);
+                }
+            }
+
+            input.value = '';
+            clearAttachedImage();
+            renderMessages();
+            updateFavoritesPreview();
+            renderChatsList();
+        }
+
+        function renderMessages() {
+            const box = document.getElementById('messages-container');
+            box.innerHTML = '';
+
+            const list = localMessagesDB[activeChatTarget] || [];
+            const bubbleStyle = localStorage.getItem('pwm_bubble_style') || 'rounded';
+
+            list.forEach(m => {
+                const isOut = m.sender === currentUser.id;
+                const el = document.createElement('div');
+                el.className = `msg-bubble ${isOut ? 'out' : 'in'} ${bubbleStyle === 'sharp' ? 'sharp' : ''}`;
+
+                let imgHTML = m.image ? `<img src="${m.image}" class="msg-img" onclick="openImageViewer('${m.image}')">` : '';
+                let textHTML = m.text ? `<div>${escapeHtml(m.text)}</div>` : '';
+                let statusCheck = isOut ? (m.delivered ? '✓✓' : '✓') : '';
+
+                el.innerHTML = `
+                    ${imgHTML}
+                    ${textHTML}
+                    <div class="msg-meta">
+                        <span>${m.time}</span>
+                        ${isOut ? `<span class="msg-status-icon">${statusCheck}</span>` : ''}
+                    </div>
+                `;
+                box.appendChild(el);
+            });
+
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function renderChatsList() {
+            const list = document.getElementById('chats-list');
+            const chats = Object.keys(localMessagesDB).filter(k => k !== 'favorites');
+
+            if (chats.length === 0) {
+                list.innerHTML = `
+                    <div style="text-align: center; color: var(--text-muted); margin-top: 40px; font-size: 13.5px; line-height: 1.5;">
+                        <p>У вас пока нет активных диалогов</p>
+                        <p style="margin-top: 8px; font-size: 12.5px;">Перейдите в <b>«Поиск»</b>, чтобы написать другу.</p>
+                    </div>`;
+                return;
+            }
+
+            list.innerHTML = '';
+            chats.forEach(target => {
+                const history = localMessagesDB[target];
+                const last = history && history.length > 0 ? history[history.length - 1] : null;
+                const profile = knownProfilesDB[target];
+
+                const card = document.createElement('div');
+                card.className = 'chat-card';
+                card.onclick = () => openChat(target);
+
+                const displayName = profile ? profile.name : target;
+                const displayPreview = last ? (last.image ? '📷 [Фото] ' + (last.text || '') : last.text) : 'Нет сообщений';
+
+                card.innerHTML = `
+                    <div class="avatar-box" id="avatar-list-${target}">💬</div>
+                    <div class="chat-details">
+                        <div class="chat-header-row">
+                            <span class="chat-name">${escapeHtml(displayName)}</span>
+                            <span class="chat-time">${last ? last.time : ''}</span>
+                        </div>
+                        <div class="chat-preview">${escapeHtml(displayPreview)}</div>
+                    </div>
+                `;
+                list.appendChild(card);
+                renderAvatarBox(document.getElementById(`avatar-list-${target}`), profile?.avatar || '💬');
+            });
+        }
+
+        function updateFavoritesPreview() {
+            const favs = localMessagesDB['favorites'] || [];
+            if (favs.length > 0) {
+                const last = favs[favs.length - 1];
+                document.getElementById('fav-last-msg').innerText = last.image ? '📷 Фотография' : last.text;
+                document.getElementById('fav-last-time').innerText = last.time;
+            }
+        }
+
+        function clearActiveChatHistory() {
+            if (!activeChatTarget) return;
+            if (confirm('Очистить всю историю этого чата?')) {
+                delete localMessagesDB[activeChatTarget];
+                localStorage.setItem('pwm_messages_db_v4', JSON.stringify(localMessagesDB));
+                renderMessages();
+                renderChatsList();
+                updateFavoritesPreview();
+                showToast('🗑️ История чата очищена');
+            }
+        }
+
+        /* ========================================================
+           6. SEARCH & DISCOVERY
+           ======================================================== */
+        function handleSearchInput() {
+            const query = document.getElementById('search-input').value.trim();
+            const res = document.getElementById('search-results');
+
+            if (!query) {
+                res.innerHTML = `
+                    <div style="text-align: center; color: var(--text-muted); margin-top: 30px; font-size: 13.5px; line-height: 1.6;">
+                        <p>💡 Скопируй ID или юзернейм друга во вкладке <b>«Профиль»</b> и введи в поле поиска.</p>
+                    </div>`;
+                return;
+            }
+
+            const cleanQuery = query.replace(/^@/, '');
+            // Check if known in cache
+            const cached = knownProfilesDB[cleanQuery] || knownProfilesDB[cleanQuery.toLowerCase()];
+            const title = cached ? `${cached.name} (@${cached.username})` : `Написать пользователю "${query}"`;
+            const bioText = cached ? cached.bio : 'Нажмите, чтобы открыть диалог';
+
+            res.innerHTML = `
+                <div class="chat-card" onclick="openChat('${cleanQuery}')">
+                    <div class="avatar-box" id="search-avatar-preview">👤</div>
+                    <div class="chat-details">
+                        <div class="chat-name">${escapeHtml(title)}</div>
+                        <div class="chat-preview">${escapeHtml(bioText)}</div>
+                    </div>
+                </div>
+            `;
+            renderAvatarBox(document.getElementById('search-avatar-preview'), cached?.avatar || '👤');
+        }
+
+        /* ========================================================
+           7. PARTNER PROFILE MODAL & IMAGE VIEWER
+           ======================================================== */
+        function openPartnerProfileModal() {
+            if (activeChatTarget === 'favorites') return;
+            const profile = knownProfilesDB[activeChatTarget];
+            
+            document.getElementById('modal-partner-name').innerText = profile?.name || activeChatTarget;
+            document.getElementById('modal-partner-user').innerText = profile?.username ? '@' + profile.username : '@' + activeChatTarget;
+            document.getElementById('modal-partner-id').innerText = 'P2P ID: ' + (profile?.id || activeChatTarget);
+            document.getElementById('modal-partner-bio').innerText = profile?.bio || 'Пользователь пока не добавил описание о себе.';
+            renderAvatarBox(document.getElementById('modal-partner-avatar'), profile?.avatar || '👤');
+
+            document.getElementById('partner-modal').classList.add('active');
+        }
+
+        function closePartnerModal() {
+            document.getElementById('partner-modal').classList.remove('active');
+        }
+
+        function openImageViewer(src) {
+            document.getElementById('image-viewer-img').src = src;
+            document.getElementById('image-viewer').classList.add('active');
+        }
+
+        /* ========================================================
+           8. CUSTOMIZATION ENGINE
+           ======================================================== */
+        function setTheme(themeName, btn) {
+            document.body.setAttribute('data-theme', themeName);
+            localStorage.setItem('pwm_theme', themeName);
+            if (btn) {
+                document.querySelectorAll('.theme-grid .theme-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            }
+            showToast('🎨 Тема обновлена');
+        }
+
+        function setAccent(color, dot) {
+            document.documentElement.style.setProperty('--accent-color', color);
+            document.documentElement.style.setProperty('--accent-hover', color);
+            document.documentElement.style.setProperty('--msg-out', color);
+            document.documentElement.style.setProperty('--accent-glow', color + '55');
+            localStorage.setItem('pwm_accent', color);
+
+            if (dot) {
+                document.querySelectorAll('.palette-dot').forEach(d => d.classList.remove('active'));
+                dot.classList.add('active');
+            }
+            showToast('✨ Акцентный цвет применён');
+        }
+
+        function setChatPattern(pattern) {
+            let patVal = 'none';
+            let size = 'auto';
+
+            if (pattern === 'dots') {
+                patVal = 'radial-gradient(rgba(255, 255, 255, 0.08) 1.5px, transparent 1.5px)';
+                size = '22px 22px';
+            } else if (pattern === 'stars') {
+                patVal = 'radial-gradient(1px 1px at 20px 30px, #eee, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 40px 70px, #fff, rgba(0,0,0,0)), radial-gradient(1px 1px at 90px 40px, #ddd, rgba(0,0,0,0))';
+                size = '120px 120px';
+            } else if (pattern === 'doodles') {
+                patVal = 'linear-gradient(45deg, rgba(255,255,255,0.03) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.03) 75%)';
+                size = '30px 30px';
+            }
+
+            document.documentElement.style.setProperty('--chat-pattern', patVal);
+            document.documentElement.style.setProperty('--chat-pattern-size', size);
+            localStorage.setItem('pwm_chat_pattern', pattern);
+            showToast('🖼️ Фон сообщений изменён');
+        }
+
+        function setBubbleStyle(style) {
+            localStorage.setItem('pwm_bubble_style', style);
+            if (activeChatTarget) renderMessages();
+            showToast('💬 Стиль бабблов сохранён');
+        }
+
+        function setAvatarShape(radius, shadow) {
+            document.documentElement.style.setProperty('--avatar-radius', radius);
+            document.documentElement.style.setProperty('--avatar-shadow', shadow);
+            localStorage.setItem('pwm_avatar_radius', radius);
+            localStorage.setItem('pwm_avatar_shadow', shadow);
+            showToast('👤 Форма аватарок обновлена');
+        }
+
+        function toggleAudio() {
+            soundEnabled = !soundEnabled;
+            localStorage.setItem('pwm_sound_pref', soundEnabled ? 'true' : 'false');
+            document.getElementById('sound-toggle-btn').innerText = soundEnabled ? '🔊 Звуки: Включены' : '🔇 Звуки: Выключены';
+            showToast(soundEnabled ? '🔊 Звуки включены' : '🔇 Звуки выключены');
+        }
+
+        function loadSavedCustomizations() {
+            const savedTheme = localStorage.getItem('pwm_theme');
+            if (savedTheme) document.body.setAttribute('data-theme', savedTheme);
+
+            const savedAccent = localStorage.getItem('pwm_accent');
+            if (savedAccent) setAccent(savedAccent, null);
+
+            const savedPattern = localStorage.getItem('pwm_chat_pattern');
+            if (savedPattern) setChatPattern(savedPattern);
+
+            const savedRadius = localStorage.getItem('pwm_avatar_radius');
+            const savedShadow = localStorage.getItem('pwm_avatar_shadow');
+            if (savedRadius) document.documentElement.style.setProperty('--avatar-radius', savedRadius);
+            if (savedShadow) document.documentElement.style.setProperty('--avatar-shadow', savedShadow);
+
+            document.getElementById('sound-toggle-btn').innerText = soundEnabled ? '🔊 Звуки: Включены' : '🔇 Звуки: Выключены';
+        }
+
+        /* ========================================================
+           9. HELPERS & NAVIGATION
+           ======================================================== */
+        function switchPage(pageId, btn) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+
+            document.getElementById('page-' + pageId).classList.add('active');
+            btn.classList.add('active');
+
+            const titles = {
+                chats: 'Чаты',
+                search: 'Поиск контактов',
+                custom: 'Кастомизация',
+                profile: 'Мой профиль'
+            };
+            document.getElementById('header-title').innerText = titles[pageId] || 'Чаты';
+        }
+
+        function copyText(str, label) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(str).then(() => {
+                    showToast(`📋 ${label} скопирован!`);
+                });
+            } else {
+                const temp = document.createElement('input');
+                temp.value = str;
+                document.body.appendChild(temp);
+                temp.select();
+                document.execCommand('copy');
+                document.body.removeChild(temp);
+                showToast(`📋 ${label} скопирован!`);
+            }
+        }
+
+        function showToast(text) {
+            const toast = document.getElementById('toast');
+            toast.innerText = text;
+            toast.classList.add('show');
+            clearTimeout(toast._timer);
+            toast._timer = setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2300);
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text.toString()
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // Window startup
+        window.addEventListener('load', function() {
+            loadSavedCustomizations();
+            updateProfileUI();
+            renderChatsList();
+            updateFavoritesPreview();
+            initP2PNetwork();
+        });
+    </script>
+</body>
+</html>
